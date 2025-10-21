@@ -7,7 +7,7 @@ import calendar
 
 # --- KRX API 정보 설정 ---
 # ⚠️ 새로운 엔드포인트 주소로 업데이트되었습니다.
-API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd.json' 
+API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd' 
 
 try:
     # Streamlit Secrets에서 AUTH_KEY를 안전하게 불러옵니다.
