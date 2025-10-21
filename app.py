@@ -6,29 +6,26 @@ from datetime import datetime
 import calendar 
 
 # --- KRX API 정보 설정 ---
-# st.secrets에서 정보를 불러옵니다. (Streamlit Cloud의 Secrets 설정이 필수!)
-# 오류 해결을 위해, 현재는 이전에 제공해주신 샘플 API URL을 그대로 사용합니다.
-API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd.json'
+API_URL = 'https://data-dbg.krx.co.kr/svc/sample/apis/etp/etf_bydd_trd.json'
 
 try:
-    API_ID = st.secrets["krx_api"]["api_id"]
+    # ⚠️ Streamlit Secrets에서 AUTH_KEY를 안전하게 불러옵니다.
     AUTH_KEY = st.secrets["krx_api"]["auth_key"]
 except (KeyError, AttributeError):
-    st.error("⚠️ Streamlit Secrets 설정이 필요합니다. 'krx_api' 섹션을 확인하세요.")
-    API_ID = 'etf_bydd_trd'
-    AUTH_KEY = '74D1B99DFBF345BBA3FB4476510A4BED4C78D13A'
+    st.error("⚠️ Streamlit Secrets 설정이 필요합니다. 'krx_api' 섹션에 'auth_key'를 확인하세요.")
+    # 새로운 인증키로 기본값 업데이트
+    AUTH_KEY = '16B23371BBDC4107AB07CBBBBA14ADBCD2525DF0'
     st.info("현재는 코드에 직접 입력된 테스트 키로 실행됩니다. 보안을 위해 Secrets를 사용해주세요.")
 
 
 # --- 데이터 가져오기 함수 (60초 동안 캐싱) ---
 @st.cache_data(ttl=60) 
-def fetch_etf_data(api_url, api_id, auth_key):
+def fetch_etf_data(api_url, auth_key):
     """KRX API에서 ETF 데이터를 가져와 DataFrame으로 반환합니다."""
     
     headers = {
         'Content-Type': 'application/json',
         'API-KEY': auth_key, 
-        'API-ID': api_id
     }
     
     try:
@@ -36,29 +33,25 @@ def fetch_etf_data(api_url, api_id, auth_key):
         response.raise_for_status() 
         data = response.json()
         
-        # ⚠️ JSON 구조 변경 반영: 'OutBlock_1' 키 아래에 데이터 배열이 있을 것으로 추정
-        # 테스트 페이지의 응답 구조를 기반으로 'OutBlock_1' 키를 사용합니다.
+        # 제공해주신 JSON 구조('OutBlock_1')를 사용
         etf_list = data.get('OutBlock_1', []) 
         
         if not etf_list:
-            # 'OutBlock_1'이 비었거나 키가 없을 경우 'output' 키도 확인 (이전 버전 호환)
-            etf_list = data.get('output', []) 
-            if not etf_list:
-                return pd.DataFrame() 
+            st.warning("API 응답에서 'OutBlock_1' 데이터를 찾을 수 없습니다.")
+            return pd.DataFrame() 
 
         df = pd.DataFrame(etf_list)
         
-        # ⚠️ 컬럼 이름 매핑 변경: 제공된 JSON 필드명으로 수정
+        # 컬럼 이름 매핑 변경: 제공된 JSON 필드명으로 수정
         df = df.rename(columns={
-            'ISU_NM': '종목명',         # 이전: SAMPLE_ETC_KOR_NM
-            'TDD_CLSPRC': '현재가',     # 이전: TRD_PRIC (당일 종가)
-            'FLUC_RT': '등락률 (%)',    # 이전: flucRate
-            'ACC_TRDVOL': '거래량'     # 이전: ACC_TRD_QTY
+            'ISU_NM': '종목명',         
+            'TDD_CLSPRC': '현재가',     
+            'FLUC_RT': '등락률 (%)',    
+            'ACC_TRDVOL': '거래량'     
         })
         
         # 데이터 타입 변환 및 정리
         df['현재가'] = pd.to_numeric(df['현재가'], errors='coerce').fillna(0).astype(int)
-        # 등락률은 소수점을 포함하므로 float으로 변환
         df['등락률 (%)'] = pd.to_numeric(df['등락률 (%)'], errors='coerce').fillna(0).round(2)
         df['거래량'] = pd.to_numeric(df['거래량'], errors='coerce').fillna(0).astype(int)
         
@@ -69,7 +62,7 @@ def fetch_etf_data(api_url, api_id, auth_key):
         return pd.DataFrame()
 
 
-# --- Streamlit 앱 메인 로직 (이전과 동일) ---
+# --- Streamlit 앱 메인 로직 ---
 def main():
     st.set_page_config(
         page_title="국내 ETF 등락률 순위",
@@ -100,7 +93,7 @@ def main():
         else:
             status_placeholder.markdown(f"**최종 업데이트 시간:** {current_time} (KRX 샘플 데이터)")
 
-            etf_df = fetch_etf_data(API_URL, API_ID, AUTH_KEY)
+            etf_df = fetch_etf_data(API_URL, AUTH_KEY)
             
             if not etf_df.empty:
                 last_valid_df = etf_df 
