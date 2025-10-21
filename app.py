@@ -6,15 +6,16 @@ from datetime import datetime
 import calendar 
 
 # --- KRX API 정보 설정 ---
-API_URL = 'https://data-dbg.krx.co.kr/svc/sample/apis/etp/etf_bydd_trd.json'
+# ⚠️ 새로운 엔드포인트 주소로 업데이트되었습니다.
+API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd' 
 
 try:
-    # ⚠️ Streamlit Secrets에서 AUTH_KEY를 안전하게 불러옵니다.
+    # Streamlit Secrets에서 AUTH_KEY를 안전하게 불러옵니다.
     AUTH_KEY = st.secrets["krx_api"]["auth_key"]
 except (KeyError, AttributeError):
     st.error("⚠️ Streamlit Secrets 설정이 필요합니다. 'krx_api' 섹션에 'auth_key'를 확인하세요.")
-    # 새로운 인증키로 기본값 업데이트
-    AUTH_KEY = '16B23371BBDC4107AB07CBBBBA14ADBCD2525DF0'
+    # 제공해주신 새 인증키를 기본값으로 사용합니다.
+    AUTH_KEY = '16B23371BBDC4107AB07CBBBBA14ADBCD2525DF0' 
     st.info("현재는 코드에 직접 입력된 테스트 키로 실행됩니다. 보안을 위해 Secrets를 사용해주세요.")
 
 
@@ -23,6 +24,7 @@ except (KeyError, AttributeError):
 def fetch_etf_data(api_url, auth_key):
     """KRX API에서 ETF 데이터를 가져와 DataFrame으로 반환합니다."""
     
+    # 헤더에 인증키를 포함하여 API를 호출합니다.
     headers = {
         'Content-Type': 'application/json',
         'API-KEY': auth_key, 
@@ -30,14 +32,14 @@ def fetch_etf_data(api_url, auth_key):
     
     try:
         response = requests.get(api_url, headers=headers, timeout=10)
-        response.raise_for_status() 
+        response.raise_for_status() # HTTP 오류(4xx, 5xx) 발생 시 예외 처리
         data = response.json()
         
         # 제공해주신 JSON 구조('OutBlock_1')를 사용
         etf_list = data.get('OutBlock_1', []) 
         
         if not etf_list:
-            st.warning("API 응답에서 'OutBlock_1' 데이터를 찾을 수 없습니다.")
+            st.warning("API 응답에서 유효한 데이터('OutBlock_1')를 찾을 수 없습니다. 키 또는 엔드포인트를 확인하세요.")
             return pd.DataFrame() 
 
         df = pd.DataFrame(etf_list)
