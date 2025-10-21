@@ -3,13 +3,12 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import calendar 
-import pytz # 👈 pytz 라이브러리 임포트 추가
+import pytz 
 
 # --- KRX API 정보 설정 ---
+# (이하 API 설정 및 AUTH_KEY 부분은 이전과 동일)
 ETF_DAILY_API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd' 
 ETF_COMP_API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_comp_list' 
-
-# ⚠️ 한국 시간대(KST) 정의
 KST = pytz.timezone('Asia/Seoul')
 
 try:
@@ -21,10 +20,10 @@ except (KeyError, AttributeError):
 
 
 # --- 1. ETF 일별 매매 정보 (목록) 가져오기 함수 ---
-# (이 함수는 시간 로직이 없으므로 그대로 유지됩니다.)
+# (fetch_etf_daily_data 함수는 변경 없음)
 @st.cache_data(ttl=3600)
 def fetch_etf_daily_data(api_url, auth_key, target_basDd):
-    """KRX API에 GET 요청을 보내 ETF 일별 매매 데이터를 가져옵니다."""
+    # ... (이전 코드와 동일) ...
     
     headers = {
         'Content-Type': 'application/json',
@@ -65,6 +64,7 @@ def fetch_etf_daily_data(api_url, auth_key, target_basDd):
         df['등락률 (%)'] = pd.to_numeric(df['등락률 (%)'], errors='coerce').fillna(0).round(2)
         df['거래량'] = pd.to_numeric(df['거래량'], errors='coerce').fillna(0).astype(int)
         
+        # 종목코드를 반환하여 Session State에 저장할 수 있도록 합니다.
         return df[['종목명', '종목코드', '현재가', '등락률 (%)', '거래량']], base_date
 
     except requests.exceptions.RequestException as e:
@@ -73,10 +73,10 @@ def fetch_etf_daily_data(api_url, auth_key, target_basDd):
 
 
 # --- 2. ETF 구성 종목 상세 정보 가져오기 함수 ---
-# (이 함수는 시간 로직이 없으므로 그대로 유지됩니다.)
+# (fetch_etf_composition 함수는 변경 없음)
 @st.cache_data(ttl=3600)
 def fetch_etf_composition(api_url, auth_key, target_basDd, isuCd):
-    """선택된 ETF의 구성 종목 상세 정보를 가져옵니다."""
+    # ... (이전 코드와 동일) ...
     
     headers = {
         'Content-Type': 'application/json',
@@ -129,10 +129,9 @@ def main():
     st.title("📈 국내 ETF 일별 등락률 및 구성종목 조회")
     
     # 1. 날짜 선택 위젯 (KST 기준으로 날짜 계산)
-    now_kst = datetime.now(KST) # 👈 KST 현재 시간
+    now_kst = datetime.now(KST) 
     today = now_kst.date()
     
-    # KST 기준 최근 영업일 계산
     default_date = today - timedelta(days=1)
     if default_date.weekday() == calendar.SUNDAY:
         default_date -= timedelta(days=2)
@@ -145,11 +144,9 @@ def main():
         max_value=today
     )
 
-    # 날짜를 API 형식(YYYYMMDD)으로 변환
     target_basDd = selected_date.strftime('%Y%m%d')
     
     st.subheader(f"조회 기준일: {selected_date.strftime('%Y년 %m월 %d일')}")
-    # ⚠️ KST로 조회 시각 표시
     st.text(f"데이터 조회 시각: {now_kst.strftime('%Y-%m-%d %H:%M:%S')} (KST)")
 
     # 2. ETF 목록 데이터 로딩
@@ -160,9 +157,11 @@ def main():
         sorted_df = etf_df.sort_values(by='등락률 (%)', ascending=False).reset_index(drop=True)
         
         sorted_df['순위'] = sorted_df.index + 1
-        display_df = sorted_df[['순위', '종목명', '현재가', '등락률 (%)', '거래량', '종목코드']]
         
-        # 3. ETF 목록 표시 및 클릭 이벤트 처리
+        # ⚠️ display_df에서 '종목코드'를 제거하여 숨김 문제를 해결합니다.
+        display_df = sorted_df[['순위', '종목명', '현재가', '등락률 (%)', '거래량']]
+        
+        # 3. ETF 목록 표시 및 클릭 이벤트 처리 (st.data_editor 사용)
         st.markdown("### 1. ETF 목록 (클릭하여 구성종목 조회)")
         
         def color_rate(val):
@@ -177,21 +176,28 @@ def main():
             '거래량': '{:,.0f}'
         })
 
-        col_config = {"종목코드": st.column_config.Column(disabled=True, hide_label=True)}
-        
-        selected_rows = st.dataframe(
+        # data_editor로 테이블 표시 및 클릭된 행 감지
+        edited_df = st.data_editor(
             styled_df,
             use_container_width=True,
             hide_index=True,
-            column_config=col_config,
-            selection_mode="single-row",
-            key="etf_selection_table"
+            disabled=display_df.columns, # 모든 컬럼 수정 불가 설정
+            key="etf_selection_editor"
         )
         
         # 4. 클릭된 ETF의 구성 종목 조회 및 표시
-        if selected_rows and selected_rows["selection"]["rows"]:
-            selected_index = selected_rows["selection"]["rows"][0]
-            selected_etf = display_df.iloc[selected_index]
+        # data_editor는 row_selection 기능을 직접 제공하지 않으므로, 
+        # 변경된 데이터프레임의 인덱스를 찾아 클릭된 행을 유추합니다.
+        
+        # 💡 st.session_state를 사용하여 선택된 행의 인덱스를 저장 (더 확실한 방식)
+        selection = st.session_state.etf_selection_editor["selection"]["rows"]
+
+        if selection:
+            selected_index_in_display = selection[0]
+            
+            # 원본 sorted_df (종목코드가 있는)에서 해당 ETF 정보 추출
+            # selected_index_in_display는 sorted_df의 인덱스와 일치합니다.
+            selected_etf = sorted_df.iloc[selected_index_in_display]
             selected_isu_cd = selected_etf['종목코드']
             selected_isu_nm = selected_etf['종목명']
             
