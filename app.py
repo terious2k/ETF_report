@@ -7,9 +7,6 @@ import calendar
 
 # --- KRX API 정보 설정 ---
 API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd' 
-# 장 마감 시간 설정 (이전 로직 유지)
-MARKET_CLOSE_TIME = 15 
-MARKET_CLOSE_MINUTE = 30 
 
 try:
     AUTH_KEY = st.secrets["krx_api"]["auth_key"]
@@ -19,41 +16,15 @@ except (KeyError, AttributeError):
     st.info("현재는 코드에 직접 입력된 테스트 키로 실행됩니다. 보안을 위해 Secrets를 사용해주세요.")
 
 
-# --- 기준일자 계산 함수 ---
-def get_trading_date():
-    """현재 시각을 기준으로 API 요청에 사용할 기준일자(YYYYMMDD)를 반환합니다."""
-    now = datetime.now()
-    weekday = now.weekday()
-    target_date = now.date()
-    
-    # 평일(월~금) 로직
-    if weekday < calendar.SATURDAY: 
-        close_time = now.replace(hour=MARKET_CLOSE_TIME, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
-        
-        if now < close_time:
-            # 15:30 이전: 전일(T-1)의 데이터를 요청
-            target_date -= timedelta(days=1)
-            
-    # 주말 로직: 가장 가까운 금요일로 이동 (API 호출은 main에서 건너뜁니다)
-    else:
-        # 일요일(6)이면 2일 전(금요일), 토요일(5)이면 1일 전(금요일)로 이동
-        days_to_subtract = weekday - calendar.FRIDAY
-        target_date -= timedelta(days=days_to_subtract)
-        
-    return target_date.strftime('%Y%m%d')
-
-
-# --- 데이터 가져오기 함수 (POST 요청 및 인증키/기준일자 포함) ---
+# --- 데이터 가져오기 함수 (선택된 날짜를 인수로 받음) ---
 @st.cache_data(ttl=60) 
-def fetch_etf_data(api_url, auth_key):
+def fetch_etf_data(api_url, auth_key, target_basDd):
     """KRX API에 POST 요청을 보내 ETF 데이터를 가져와 DataFrame과 기준일자를 반환합니다."""
     
-    target_basDd = get_trading_date()
-    
-    # ⚠️ 1. API 요청 본문(Body) 데이터 구성: AUTH_KEY 대신 serviceKey 사용
+    # 1. API 요청 본문(Body) 데이터 구성: serviceKey와 선택된 날짜 사용
     payload = {
-        'serviceKey': auth_key, # 👈 필드명 변경: 가장 유력한 해결책
-        'basDd': target_basDd,
+        'serviceKey': auth_key, # 👈 가장 유력한 인증 필드명 유지
+        'basDd': target_basDd, # 👈 선택된 조회 기준일자 사용
         'etc_parm': 'Y', 
     }
 
@@ -77,7 +48,7 @@ def fetch_etf_data(api_url, auth_key):
 
         df = pd.DataFrame(etf_list)
         
-        # 4. 기준일자 추출 및 포맷팅 (데이터에서 추출된 최종 기준일자를 사용)
+        # 4. 기준일자 추출 및 포맷팅 
         base_date_raw = etf_list[0].get('BAS_DD')
         if base_date_raw and len(base_date_raw) == 8:
             base_date = f"{base_date_raw[:4]}-{base_date_raw[4:6]}-{base_date_raw[6:]}"
@@ -111,77 +82,64 @@ def main():
         initial_sidebar_state="collapsed"
     )
     
-    st.title("📈 국내 ETF 실시간 등락률 순위")
-    st.markdown(
-        f"데이터는 **1분**마다 자동으로 업데이트됩니다. "
-        f"({MARKET_CLOSE_TIME}시 {MARKET_CLOSE_MINUTE}분 장 마감 기준)"
-    )
+    st.title("📈 국내 ETF 일별 등락률 순위")
+    st.markdown("데이터는 선택하신 기준일자의 일별 매매 정보입니다.")
     
-    status_placeholder = st.empty()
-    table_placeholder = st.empty()
+    # 1. 날짜 선택 위젯
+    today = datetime.now().date()
+    default_date = today - timedelta(days=1)
     
-    last_valid_df = pd.DataFrame() 
-    last_base_date = None
-
-    while True:
-        now = datetime.now()
-        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-        weekday = now.weekday()
+    # 기본 날짜를 가장 최근의 평일로 설정 (API 호출의 성공 확률 높이기)
+    if default_date.weekday() == calendar.SUNDAY:
+        default_date -= timedelta(days=2)
+    elif default_date.weekday() == calendar.SATURDAY:
+        default_date -= timedelta(days=1)
         
-        # 주말(토/일) 처리
-        if weekday >= calendar.SATURDAY: 
-            status_placeholder.markdown(
-                f"**데이터 기준일:** **{last_base_date if last_base_date else '확인 중'}** | "
-                f"**최종 업데이트 시간:** {current_time} (오늘은 **주말**로, KRX 시장 휴장일입니다. 이전 데이터가 표시됩니다.)"
-            )
-            sleep_time = 3600 
-            
-        else:
-            # 평일 처리
-            status_placeholder.markdown(f"**최종 업데이트 시간:** {current_time} (데이터 로딩 중...)")
+    selected_date = st.date_input(
+        "📅 조회 기준 날짜를 선택해주세요. (최근 거래일 기준)", 
+        value=default_date,
+        max_value=today
+    )
 
-            etf_df, base_date = fetch_etf_data(API_URL, AUTH_KEY)
-            
-            if not etf_df.empty:
-                last_valid_df = etf_df 
-                last_base_date = base_date 
-                
-                status_placeholder.markdown(
-                    f"**데이터 기준일:** **{last_base_date}** | "
-                    f"**최종 업데이트 시간:** {current_time}"
-                )
-            
-            sleep_time = 60 
+    # 2. 날짜를 API 형식(YYYYMMDD)으로 변환
+    target_basDd = selected_date.strftime('%Y%m%d')
+    
+    st.subheader(f"조회 기준일: {selected_date.strftime('%Y년 %m월 %d일')}")
+    st.text(f"데이터 조회 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        if not last_valid_df.empty:
-            
-            sorted_df = last_valid_df.sort_values(by='등락률 (%)', ascending=False).reset_index(drop=True)
-            
-            sorted_df.index = sorted_df.index + 1
-            sorted_df = sorted_df.reset_index().rename(columns={'index': '순위'})
-            top_10_df = sorted_df.head(10)
-            
-            def color_rate(val):
-                color = 'red' if val > 0 else ('blue' if val < 0 else 'gray')
-                return f'color: {color}; font-weight: bold;'
-            
-            table_placeholder.dataframe(
-                top_10_df.style.applymap(
-                    color_rate, 
-                    subset=['등락률 (%)']
-                ).format({
-                    '현재가': '{:,.0f}', 
-                    '거래량': '{:,.0f}'
-                }),
-                use_container_width=True,
-                hide_index=True 
-            )
-        else:
-             table_placeholder.info(
-                 f"데이터 로딩 중이거나, API 호출에 오류가 발생했습니다. (마지막 시도: {current_time}). POST 인증 방식을 확인해주세요."
-             )
-
-        time.sleep(sleep_time)
+    # 3. 데이터 로딩 및 표시
+    etf_df, base_date = fetch_etf_data(API_URL, AUTH_KEY, target_basDd)
+    
+    if not etf_df.empty:
+        
+        # 등락률 순으로 정렬
+        sorted_df = etf_df.sort_values(by='등락률 (%)', ascending=False).reset_index(drop=True)
+        
+        sorted_df.index = sorted_df.index + 1
+        sorted_df = sorted_df.reset_index().rename(columns={'index': '순위'})
+        
+        # 등락률에 따라 색상을 지정하는 스타일링 함수
+        def color_rate(val):
+            color = 'red' if val > 0 else ('blue' if val < 0 else 'gray')
+            return f'color: {color}; font-weight: bold;'
+        
+        # Streamlit에 최종 표 표시
+        st.dataframe(
+            sorted_df.style.applymap(
+                color_rate, 
+                subset=['등락률 (%)']
+            ).format({
+                '현재가': '{:,.0f}', 
+                '거래량': '{:,.0f}'
+            }),
+            use_container_width=True,
+            hide_index=True 
+        )
+    else:
+        st.warning(
+            f"데이터 로드에 실패했거나 {selected_date.strftime('%Y-%m-%d')}에 조회된 데이터가 없습니다. "
+            "계속해서 401 오류가 발생하면, 인증키(serviceKey)나 API 엔드포인트를 확인해야 합니다."
+        )
 
 if __name__ == "__main__":
     main()
