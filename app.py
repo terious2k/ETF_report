@@ -7,7 +7,7 @@ import calendar
 
 # --- KRX API 정보 설정 ---
 # st.secrets에서 정보를 불러옵니다. (Streamlit Cloud의 Secrets 설정이 필수!)
-API_URL = 'https://data-dbg.krx.co.kr/svc/sample/apis/etp/etf_bydd_trd.json'
+API_URL = 'https://data-dbg.krx.co.kr/svc/sample/apis/etp/etf_bydd_trd'
 
 try:
     API_ID = st.secrets["krx_api"]["api_id"]
@@ -16,7 +16,7 @@ except (KeyError, AttributeError):
     # Secrets 설정이 안 되어 있을 경우를 대비한 대체 및 경고
     st.error("⚠️ Streamlit Secrets 설정이 필요합니다. 'krx_api' 섹션을 확인하세요.")
     API_ID = 'etf_bydd_trd'
-    AUTH_KEY = '74D1B99DFBF345BBA3FB4476510A4BED4C78D13A'
+    AUTH_KEY = '16B23371BBDC4107AB07CBBBBA14ADBCD2525DF0'
     st.info("현재는 코드에 직접 입력된 테스트 키로 실행됩니다. 보안을 위해 Secrets를 사용해주세요.")
 
 
