@@ -8,7 +8,7 @@ import calendar
 # --- KRX API 정보 설정 ---
 # st.secrets에서 정보를 불러옵니다. (Streamlit Cloud의 Secrets 설정이 필수!)
 # 오류 해결을 위해, 현재는 이전에 제공해주신 샘플 API URL을 그대로 사용합니다.
-API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd'
+API_URL = 'https://data-dbg.krx.co.kr/svc/apis/etp'
 
 try:
     API_ID = st.secrets["krx_api"]["api_id"]
