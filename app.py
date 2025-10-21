@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import calendar 
 
 # --- KRX API 정보 설정 ---
