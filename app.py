@@ -168,4 +168,29 @@ def main():
             
             sorted_df.index = sorted_df.index + 1
             sorted_df = sorted_df.reset_index().rename(columns={'index': '순위'})
-            top_10_df
+            top_10_df = sorted_df.head(10)
+            
+            def color_rate(val):
+                color = 'red' if val > 0 else ('blue' if val < 0 else 'gray')
+                return f'color: {color}; font-weight: bold;'
+            
+            table_placeholder.dataframe(
+                top_10_df.style.applymap(
+                    color_rate, 
+                    subset=['등락률 (%)']
+                ).format({
+                    '현재가': '{:,.0f}', 
+                    '거래량': '{:,.0f}'
+                }),
+                use_container_width=True,
+                hide_index=True 
+            )
+        else:
+             table_placeholder.info(
+                 f"데이터 로딩 중이거나, API 호출에 오류가 발생했습니다. (마지막 시도: {current_time}). POST 인증 방식을 확인해주세요."
+             )
+
+        time.sleep(sleep_time)
+
+if __name__ == "__main__":
+    main()
